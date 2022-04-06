@@ -1,79 +1,35 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
-using UnityEditor;
 
 public class PlaneTesseract : MonoBehaviour
 {
-    MeshFilter[] meshFilters;
-    [Range(0, 360)]
+    
+    //[Range(0, 360)]
     public float rotationXY, rotationYZ, rotationZX, rotationXW, rotationYW, rotationZW;
+    public float morphSpeed = 30;
+    
     public Transform viewPoint;
+    public Transform player;
+    public float scale = 1;
+    public bool createAssetsAndPrefab = false;
+    MeshFilter[] faces;
+    private float targetZW, targetZX, targetYZ;
 
     void Awake()
     {
-        meshFilters = new MeshFilter[UtilsGeom4D.kTesseractPlanes.GetLength(0) * 2];
-        int[] frontTriangles = { 0, 1, 3, 3, 1, 2 };
-        int[] backTriangles = frontTriangles.Reverse().ToArray();
-
-        Vector3[] normals = new Vector3[4] {
-            -Vector3.forward,
-            -Vector3.forward,
-            -Vector3.forward,
-            -Vector3.forward
-        };
-        Vector2[] uv = new Vector2[4]
-        {
-            new Vector2(0, 0),
-            new Vector2(1, 0),
-            new Vector2(0, 1),
-            new Vector2(1, 1)
-        };
-        Vector3[] vertices = new Vector3[4]
-        {
-            new Vector3(0, 0, 0),
-            new Vector3(1, 0, 0),
-            new Vector3(0, 1, 0),
-            new Vector3(1, 1, 0)
-        };
-        Shader shader = Shader.Find("Standard");
-        for (int i = 0; i < meshFilters.Length; i+=2)
-        {
-            Color color = Color.HSVToRGB((i * 0.5f) / meshFilters.Length, 1, 1);
-            meshFilters[i] = createFace(vertices, frontTriangles, uv, normals, shader, color, $"Face_{(i/2).ToString("D2")}_front");
-            meshFilters[i + 1] = createFace(vertices, backTriangles, uv, normals, shader, color, $"Face_{(i / 2).ToString("D2")}_back");
-        }
-        Project();
-    }
-
-    MeshFilter createFace(Vector3[] vertices, int[] tris,Vector2[] uv, Vector3[]normals, Shader shader, Color color, string name)
-    {
-        GameObject frontChild = new GameObject(name);
-        frontChild.transform.parent = transform;
-        MeshFilter face = frontChild.AddComponent<MeshFilter>();
-        MeshRenderer renderer = frontChild.AddComponent<MeshRenderer>();
-        Material mat = new Material(shader);
-        mat.color = color;
-        renderer.material = mat;
-        Mesh mesh = new Mesh();
-        mesh.vertices = vertices;
-        mesh.triangles = tris;
-        mesh.uv = uv;
-        mesh.normals = normals;
-        face.mesh = mesh;
-        return face;
+        faces = GetComponentsInChildren<MeshFilter>();
     }
 
     void Update()
     {
         if (viewPoint.hasChanged) Project();
+        if (Morphing) Morph();
     }
 
     void OnValidate()
     {
-        if (Application.isPlaying) Project();
-
+        if (Application.isPlaying && !Application.isEditor) Project();
     }
 
 
@@ -102,36 +58,64 @@ public class PlaneTesseract : MonoBehaviour
         Vector4 fromDir = new Vector4(cp.x, cp.y, cp.z, 0);
         Vector4 upDir = new Vector4(cu.x, cu.y, cu.z, 0);
         Vector4 overDir = new Vector4(co.x, co.y, co.z, 0);
-        
-        for (int i = 0; i < meshFilters.Length; i+=2)
+
+        for (int i = 0; i < faces.Length; i += 2)
         {
             Vector4[] points = new Vector4[4];
             for (int p = 0; p < 4; p++)
             {
-                points[p] = UtilsGeom4D.kTesseractPoints[UtilsGeom4D.kTesseractPlanes[i/2, p]];
+                points[p] = UtilsGeom4D.kTesseractPoints[UtilsGeom4D.kTesseractPlanes[i / 2, p]];
             }
             Vector3[] vertices = new Vector3[4];
             UtilsGeom4D.ProjectTo3DPerspective(points, matrix, ref vertices, viewingAngle, fromDir, toDir, upDir, overDir);
-            Vector3 middlePos = (vertices[0] + vertices[1] + vertices[2] + vertices[3]) / 4f;
-            for(int v = 0; v < vertices.Length; v++)
+            for (int v = 0; v < vertices.Length; v++)
             {
-                vertices[v] -= middlePos;
+                vertices[v] *= scale;
             }
-            meshFilters[i].mesh.vertices = vertices;
-            meshFilters[i + 1].mesh.vertices = vertices;
-            meshFilters[i].mesh.RecalculateNormals();
-            meshFilters[i + 1].mesh.RecalculateNormals();
-            meshFilters[i].transform.position = middlePos;
-            meshFilters[i + 1].transform.position = middlePos;
+            faces[i].mesh = UpdateMesh(faces[i], vertices);
+            faces[i + 1].mesh = UpdateMesh(faces[i + 1], vertices);
         }
-
     }
 
-    async void OnApplicationQuit()
+    Mesh UpdateMesh(MeshFilter meshFilter, Vector3[] vertices)
     {
-        foreach (Transform child in transform)
+        Mesh updatedMesh = meshFilter.mesh;
+        updatedMesh.vertices = vertices;
+        updatedMesh.RecalculateNormals();
+        updatedMesh.RecalculateTangents();
+        updatedMesh.RecalculateBounds();
+        return updatedMesh;
+    }
+
+    void Morph()
+    {
+        rotationZW = Mathf.MoveTowardsAngle(rotationZW, targetZW, morphSpeed * Time.deltaTime);
+        rotationZX = Mathf.MoveTowardsAngle(rotationZX, targetZX, morphSpeed * Time.deltaTime);
+        rotationYZ = Mathf.MoveTowardsAngle(rotationYZ, targetYZ, morphSpeed * Time.deltaTime);
+    }
+
+    bool Morphing
+    {
+        get
         {
-            Destroy(child);
+            return targetZX != rotationZX || targetZW != rotationZW || targetYZ != rotationYZ;
         }
     }
+
+    public void StartMorph(float x, float y, float z)
+    {
+        
+        if (Morphing)
+        {
+            Debug.LogWarning("Tried to start a new morph while already morphing");
+            return;
+        }
+        targetZW = (rotationZW + 90 * x + 360) % 360;
+        targetYZ = (rotationYZ - 90 * y) % 360;
+        targetZX = (rotationZX - 90 * z) % 360;
+        
+        //print($"Starting morph: ({x}, {y}, {z}) targetZW: {targetZW} targetYZ: {targetYZ} targetZX: {targetZX}");
+    }
+
+
 }

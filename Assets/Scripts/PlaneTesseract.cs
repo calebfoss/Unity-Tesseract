@@ -10,11 +10,11 @@ public class PlaneTesseract : MonoBehaviour
     public float morphSpeed = 30;
     
     public Transform viewPoint;
-    public Transform player;
+    public float viewPointWPosition = 3;
     public float scale = 1;
     public bool createAssetsAndPrefab = false;
     MeshFilter[] faces;
-    private float targetZW, targetZX, targetYZ;
+    private float targetZW, targetXW, targetYW;
 
     void Awake()
     {
@@ -55,9 +55,9 @@ public class PlaneTesseract : MonoBehaviour
         Vector3 co = viewPoint.right;
 
         Vector4 toDir = new Vector4(tp.x, tp.y, tp.z, 0);
-        Vector4 fromDir = new Vector4(cp.x, cp.y, cp.z, 0);
-        Vector4 upDir = new Vector4(cu.x, cu.y, cu.z, 0);
-        Vector4 overDir = new Vector4(co.x, co.y, co.z, 0);
+        Vector4 fromDir = new Vector4(cp.x, cp.y, cp.z, viewPointWPosition);
+        Vector4 upDir = new Vector4(cu.x, cu.y, cu.z, viewPointWPosition);
+        Vector4 overDir = new Vector4(co.x, co.y, co.z, viewPointWPosition);
 
         for (int i = 0; i < faces.Length; i += 2)
         {
@@ -90,15 +90,15 @@ public class PlaneTesseract : MonoBehaviour
     void Morph()
     {
         rotationZW = Mathf.MoveTowardsAngle(rotationZW, targetZW, morphSpeed * Time.deltaTime);
-        rotationZX = Mathf.MoveTowardsAngle(rotationZX, targetZX, morphSpeed * Time.deltaTime);
-        rotationYZ = Mathf.MoveTowardsAngle(rotationYZ, targetYZ, morphSpeed * Time.deltaTime);
+        rotationZX = Mathf.MoveTowardsAngle(rotationZX, targetXW, morphSpeed * Time.deltaTime);
+        rotationYZ = Mathf.MoveTowardsAngle(rotationYZ, targetYW, morphSpeed * Time.deltaTime);
     }
 
     bool Morphing
     {
         get
         {
-            return targetZX != rotationZX || targetZW != rotationZW || targetYZ != rotationYZ;
+            return targetXW != rotationZX || targetZW != rotationZW || targetYW != rotationYZ;
         }
     }
 
@@ -110,9 +110,9 @@ public class PlaneTesseract : MonoBehaviour
             Debug.LogWarning("Tried to start a new morph while already morphing");
             return;
         }
-        targetZW = (rotationZW + 90 * x + 360) % 360;
-        targetYZ = (rotationYZ - 90 * y) % 360;
-        targetZX = (rotationZX - 90 * z) % 360;
+        targetZW = (rotationZW - 90 * x + 360) % 360;
+        targetYW = (rotationYW + 90 * y) % 360;
+        targetXW = (rotationXY - 90 * z + 360) % 360;
         
         //print($"Starting morph: ({x}, {y}, {z}) targetZW: {targetZW} targetYZ: {targetYZ} targetZX: {targetZX}");
     }
